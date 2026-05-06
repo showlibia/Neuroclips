@@ -7,6 +7,10 @@ import numpy as np
 from tqdm import tqdm
 import gc
 
+# Avoid allocator fragmentation on 24GB cards unless the launcher already set
+# a project-specific policy.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
@@ -64,8 +68,20 @@ parser.add_argument(
     help="whether to train diffusion prior (True) or just rely on retrieval part of the pipeline (False)",
 )
 parser.add_argument(
-    "--batch_size", type=int, default=10,
-    help="Global batch size across all GPUs (will be divided by world_size in distributed training)",
+    "--batch_size", type=int, default=8,
+    help="Global batch size across all GPUs; for 4x RTX 4090 this defaults to 2 samples/GPU.",
+)
+parser.add_argument(
+    "--test_batch_size", type=int, default=40,
+    help="Evaluation DataLoader batch size on rank 0. Increase on larger-memory GPUs.",
+)
+parser.add_argument(
+    "--clip_microbatch_size", type=int, default=4,
+    help="Number of images per OpenCLIP forward pass. Lower this if ViT-bigG still OOMs on 24GB GPUs.",
+)
+parser.add_argument(
+    "--eval_max_samples", type=int, default=0,
+    help="Optional cap on evaluation samples per epoch. 0 evaluates the full test set.",
 )
 parser.add_argument(
     "--mixup_pct",type=float,default=.33,
@@ -137,7 +153,22 @@ if distributed and world_size > 1:
     batch_size = global_batch_size // world_size
 else:
     batch_size = global_batch_size
-print(f"global_batch_size = {global_batch_size}, per_device_batch_size = {batch_size}")
+if batch_size < 1:
+    raise ValueError(
+        f"Per-device batch size resolved to {batch_size}. "
+        f"Increase --batch_size or reduce world_size ({world_size})."
+    )
+if clip_microbatch_size < 1:
+    raise ValueError("--clip_microbatch_size must be >= 1")
+if test_batch_size < 1:
+    raise ValueError("--test_batch_size must be >= 1")
+if eval_max_samples < 0:
+    raise ValueError("--eval_max_samples must be >= 0")
+print(
+    f"global_batch_size = {global_batch_size}, per_device_batch_size = {batch_size}, "
+    f"test_batch_size = {test_batch_size}, clip_microbatch_size = {clip_microbatch_size}, "
+    f"eval_max_samples = {eval_max_samples or 'all'}"
+)
     
 # seed all random functions
 utils.seed_everything(seed)
@@ -210,7 +241,7 @@ train_dl = {}
 train_dataset = CC2017_Dataset(voxel_train, train_images, train_text, istrain = True)
 test_dataset = CC2017_Dataset(voxel_test, test_images, test_text, istrain = False)
 train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=False)
-test_dl = torch.utils.data.DataLoader(test_dataset, batch_size=300, shuffle=False, num_workers=0, drop_last=False)
+test_dl = torch.utils.data.DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False, num_workers=0, drop_last=False)
 
 clip_img_embedder = FrozenOpenCLIPImageEmbedder(
     arch="ViT-bigG-14",
@@ -221,6 +252,12 @@ clip_img_embedder = FrozenOpenCLIPImageEmbedder(
 clip_img_embedder.to(device)
 clip_img_embedder.eval()
 clip_img_embedder.requires_grad_(False)
+
+def embed_clip_images(images):
+    clip_chunks = []
+    for image_chunk in images.split(clip_microbatch_size):
+        clip_chunks.append(clip_img_embedder(image_chunk))
+    return torch.cat(clip_chunks, dim=0)
 
 clip_seq_dim = 256
 clip_emb_dim = 1664
@@ -518,7 +555,7 @@ for epoch in progress_bar:
                 image = img_augment(image)
 
             with torch.no_grad():
-                clip_target = clip_img_embedder(image)
+                clip_target = embed_clip_images(image)
             assert not torch.any(torch.isnan(clip_target))
 
             if epoch < int(mixup_pct * num_epochs):
@@ -612,7 +649,7 @@ for epoch in progress_bar:
             if blurry_recon:
                 with torch.no_grad():
                     # only doing pixcorr eval on a subset of the samples per batch because its costly & slow to compute autoenc.decode()
-                    random_samps = np.random.choice(np.arange(len(image)), size=len(image)//5, replace=False)
+                    random_samps = np.random.choice(np.arange(len(image)), size=max(1, len(image)//5), replace=False)
                     blurry_recon_images = (autoenc.decode(image_enc_pred[random_samps]/0.18215).sample/ 2 + 0.5).clamp(0,1)
                     pixcorr = utils.pixcorr(image[random_samps], blurry_recon_images)
                     blurry_pixcorr += pixcorr.item()
@@ -633,8 +670,17 @@ for epoch in progress_bar:
     
     if local_rank==0:
         with torch.no_grad(), torch.cuda.amp.autocast(dtype=data_type): 
+            evaluated_samples = 0
             for test_i, (voxel, image, text) in enumerate(test_dl):  
-                # all test samples should be loaded per batch such that test_i should never exceed 0
+                if eval_max_samples and evaluated_samples >= eval_max_samples:
+                    break
+                if eval_max_samples:
+                    remaining = eval_max_samples - evaluated_samples
+                    voxel = voxel[:remaining]
+                    image = image[:remaining]
+                    text = text[:remaining]
+                    if len(image) == 0:
+                        break
 
                 ## Average same-image repeats ##
                 if test_image is None:
@@ -654,7 +700,7 @@ for epoch in progress_bar:
 
 
                 with torch.no_grad():
-                    clip_target = clip_img_embedder(image.float())
+                    clip_target = embed_clip_images(image.float())
                 voxel_ridge = model.ridge(voxel,0)
                 _, clip_voxels, blurry_image_enc_ = model.backbone(voxel_ridge)
 
@@ -668,7 +714,8 @@ for epoch in progress_bar:
                 
                 
                 # for some evals, only doing a subset of the samples per batch because of computational cost
-                random_samps = np.random.choice(np.arange(len(image)), size=len(image)//6, replace=False)
+                num_eval_samps = max(1, len(image)//6)
+                random_samps = np.random.choice(np.arange(len(image)), size=num_eval_samps, replace=False)
             
                 if use_prior:
                     loss_prior, prior_out = model.diffusion_prior(text_embed=clip_voxels[random_samps], image_embed=clip_target[random_samps])
@@ -723,19 +770,23 @@ for epoch in progress_bar:
                 utils.check_loss(loss) 
                 loss_all += loss.item()             
                 test_losses.append(loss.item())
+                evaluated_samples += len(image)
 
             # if utils.is_interactive(): clear_output(wait=True)
             print("-------------------------")
 
     
     # Save model checkpoint and reconstruct
-    if loss_all/4 < best_test_loss:
-        best_test_loss = loss_all/4
-        print('new best test loss:',best_test_loss)
-        if not use_prior:
-            save_ckpt(f'{model_name}')
-    else:
-        print('not best:',loss_all/4, 'best test loss is',best_test_loss)
+    if local_rank == 0:
+        num_test_batches = min(len(test_dl), int(np.ceil(eval_max_samples / test_batch_size)) if eval_max_samples else len(test_dl))
+        mean_test_loss = loss_all / max(1, num_test_batches)
+        if mean_test_loss < best_test_loss:
+            best_test_loss = mean_test_loss
+            print('new best test loss:',best_test_loss)
+            if not use_prior:
+                save_ckpt(f'{model_name}')
+        else:
+            print('not best:',mean_test_loss, 'best test loss is',best_test_loss)
     
     #if epoch % 30 == 0:
         #save_ckpt(f'{model_name}')
