@@ -65,7 +65,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--batch_size", type=int, default=10,
-    help="Batch size can be increased by 10x if only training retreival submodule and not diffusion prior",
+    help="Global batch size across all GPUs (will be divided by world_size in distributed training)",
 )
 parser.add_argument(
     "--mixup_pct",type=float,default=.33,
@@ -125,6 +125,19 @@ else:
 # create global variables without the args prefix
 for attribute_name in vars(args).keys():
     globals()[attribute_name] = getattr(args, attribute_name)
+
+# Treat CLI batch_size as global batch size; convert to per-process batch size for DataLoader.
+global_batch_size = batch_size
+if distributed and world_size > 1:
+    if global_batch_size % world_size != 0:
+        raise ValueError(
+            f"--batch_size ({global_batch_size}) must be divisible by world_size ({world_size}) "
+            "to keep a consistent global batch."
+        )
+    batch_size = global_batch_size // world_size
+else:
+    batch_size = global_batch_size
+print(f"global_batch_size = {global_batch_size}, per_device_batch_size = {batch_size}")
     
 # seed all random functions
 utils.seed_everything(seed)
@@ -164,7 +177,7 @@ class CC2017_Dataset(torch.utils.data.Dataset):
 
 num_samples_per_epoch = (4320) // num_devices 
 num_iterations_per_epoch = num_samples_per_epoch // (batch_size)
-print("batch_size =", batch_size, "num_iterations_per_epoch =",num_iterations_per_epoch, "num_samples_per_epoch =",num_samples_per_epoch)
+print("per_device_batch_size =", batch_size, "num_iterations_per_epoch =",num_iterations_per_epoch, "num_samples_per_epoch =",num_samples_per_epoch)
 
 subj_list = [subj]
 seq_len = 1
@@ -206,6 +219,8 @@ clip_img_embedder = FrozenOpenCLIPImageEmbedder(
     only_tokens=True,
 )
 clip_img_embedder.to(device)
+clip_img_embedder.eval()
+clip_img_embedder.requires_grad_(False)
 
 clip_seq_dim = 256
 clip_emb_dim = 1664
@@ -502,7 +517,8 @@ for epoch in progress_bar:
             if use_image_aug: 
                 image = img_augment(image)
 
-            clip_target = clip_img_embedder(image)
+            with torch.no_grad():
+                clip_target = clip_img_embedder(image)
             assert not torch.any(torch.isnan(clip_target))
 
             if epoch < int(mixup_pct * num_epochs):
@@ -637,7 +653,8 @@ for epoch in progress_bar:
                 text_fwd_percent_correct = 0.
 
 
-                clip_target = clip_img_embedder(image.float())
+                with torch.no_grad():
+                    clip_target = clip_img_embedder(image.float())
                 voxel_ridge = model.ridge(voxel,0)
                 _, clip_voxels, blurry_image_enc_ = model.backbone(voxel_ridge)
 
