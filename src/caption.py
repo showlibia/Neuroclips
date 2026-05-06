@@ -7,14 +7,13 @@ import numpy as np
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b", revision="51572668da0eb669e01a189dc22abe6088589a24", cache_dir='/fs/scratch/PAS2490/blip2')
-model = Blip2ForConditionalGeneration.from_pretrained(
-    "Salesforce/blip2-opt-2.7b", revision="51572668da0eb669e01a189dc22abe6088589a24", cache_dir='/fs/scratch/PAS2490/blip2', torch_dtype=torch.float16
-)
+model_path = "/share/home/zymatrix/NeuroClips/blip2"
+processor = Blip2Processor.from_pretrained(model_path, local_files_only=True)
+model = Blip2ForConditionalGeneration.from_pretrained(model_path, local_files_only=True, torch_dtype=torch.float16)
 model.to(device)
 
 
-images = torch.load('/fs/scratch/PAS2490/neuroclips/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/GT_test_3fps.pt',map_location='cpu')[:,2,:,:,:]
+images = torch.load('/share/home/zymatrix/NeuroClips/cc2017/GT_test_3fps.pt',map_location='cpu')[:,2,:,:,:]
 print(images.shape)
 all_predcaptions = []
 for i in range(images.shape[0]):
@@ -27,10 +26,10 @@ for i in range(images.shape[0]):
     all_predcaptions = np.hstack((all_predcaptions, generated_text))
     print(generated_text, all_predcaptions.shape)
 
-torch.save(all_predcaptions, f'/fs/scratch/PAS2490/neuroclips/GT_test_caption.pt')
+torch.save(all_predcaptions, f'/share/home/zymatrix/NeuroClips/cc2017/GT_test_caption.pt')
 
 
-images = torch.load('/fs/scratch/PAS2490/neuroclips/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/GT_train_3fps.pt',map_location='cpu')[:,2,:,:,:]
+images = torch.load('/share/home/zymatrix/NeuroClips/cc2017/GT_train_3fps.pt',map_location='cpu')[:,2,:,:,:]
 print(images.shape)
 all_predcaptions = []
 for i in range(images.shape[0]):
@@ -43,4 +42,4 @@ for i in range(images.shape[0]):
     all_predcaptions = np.hstack((all_predcaptions, generated_text))
     print(generated_text, all_predcaptions.shape)
 
-torch.save(all_predcaptions, f'/fs/scratch/PAS2490/neuroclips/GT_train_caption.pt')
+torch.save(all_predcaptions, f'/share/home/zymatrix/NeuroClips/cc2017/GT_train_caption.pt')

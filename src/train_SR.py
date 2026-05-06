@@ -5,7 +5,6 @@ sys.path.append('generative_models/')
 import argparse
 import numpy as np
 from tqdm import tqdm
-import webdataset as wds
 import gc
 
 import matplotlib.pyplot as plt
@@ -134,8 +133,8 @@ if use_prior:
 else:
     model_name =f'video_subj0{subj}_SR_backbone'
 
-os.makedirs(f'/fs/scratch/PAS2490/neuroclips/models/{model_name}',exist_ok=True)
-outdir = os.path.abspath(f'/fs/scratch/PAS2490/neuroclips/models/')
+os.makedirs(f'/share/home/zymatrix/NeuroClips/models/{model_name}',exist_ok=True)
+outdir = os.path.abspath(f'/share/home/zymatrix/NeuroClips/models/')
     
 if use_image_aug or blurry_recon:
     import kornia
@@ -177,15 +176,15 @@ elif subj == 2 :
     voxel_length = 14828
 elif subj == 3 :
     voxel_length = 9114
-voxel_train = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/subj0{subj}_train_fmri.pt', map_location='cpu')
-voxel_test = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/subj0{subj}_test_fmri.pt', map_location='cpu')
+voxel_train = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/subj0{subj}_train_fmri.pt', map_location='cpu')
+voxel_test = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/subj0{subj}_test_fmri.pt', map_location='cpu')
 voxel_test = torch.mean(voxel_test, dim = 1).unsqueeze(1)
 num_voxels_list = [voxel_train.shape[-1]]
 
-train_images = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000//GT_train_3fps.pt',map_location='cpu')
-test_images = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/GT_test_3fps.pt',map_location='cpu')
-train_text = torch.load(f'/fs/scratch/PAS2490/neuroclips/GT_train_caption_emb.pt',map_location='cpu')
-test_text = torch.load(f'/fs/scratch/PAS2490/neuroclips/GT_test_caption_emb.pt',map_location='cpu')
+train_images = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/GT_train_3fps.pt',map_location='cpu')
+test_images = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/GT_test_3fps.pt',map_location='cpu')
+train_text = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/GT_train_caption_emb.pt',map_location='cpu')
+test_text = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/GT_test_caption_emb.pt',map_location='cpu')
 
 print("Loaded all crucial train frames to cpu!", train_images.shape)
 print("Loaded all crucial test frames to cpu!", test_images.shape)
@@ -202,7 +201,7 @@ test_dl = torch.utils.data.DataLoader(test_dataset, batch_size=300, shuffle=Fals
 
 clip_img_embedder = FrozenOpenCLIPImageEmbedder(
     arch="ViT-bigG-14",
-    version="laion2b_s39b_b160k",
+    version="/share/home/zymatrix/NeuroClips/clip/open_clip_pytorch_model.bin",
     output_tokens=True,
     only_tokens=True,
 )
@@ -220,7 +219,7 @@ if blurry_recon:
         layers_per_block=2,
         sample_size=256,
     )
-    ckpt = torch.load(f'/neuroclips/snapshots/183269ab73b49d2fa10b5bfe077194992934e4e6/sd_image_var_autoenc.pth')
+    ckpt = torch.load(f'/share/home/zymatrix/NeuroClips/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/sd_image_var_autoenc.pth')
     autoenc.load_state_dict(ckpt)
     
     autoenc.eval()
@@ -230,7 +229,7 @@ if blurry_recon:
     
     from autoencoder.convnext import ConvnextXL
     
-    cnx = ConvnextXL(f'/fs/scratch/PAS2490/neuroclips/weights/convnext_xlarge_alpha0.75_fullckpt.pth')
+    cnx = ConvnextXL(f'/share/home/zymatrix/NeuroClips/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/convnext_xlarge_alpha0.75_fullckpt.pth')
     cnx.requires_grad_(False)
     cnx.eval()
     cnx.to(device)
@@ -325,7 +324,7 @@ if use_prior:
     print("\n---resuming from backbone.pth ckpt---\n")
 
     # You can choose to load the pre-trained backbone from MindEye2, which will accelerate your neuroclips' convergence.
-    checkpoint = torch.load(f'/fs/scratch/PAS2490/mindeye/weights/datasets--pscotti--mindeyev2/snapshots/183269ab73b49d2fa10b5bfe077194992934e4e6/train_logs/final_subj01_pretrained_40sess_24bs/last.pth', map_location='cpu')
+    checkpoint = torch.load(f'/share/home/zymatrix/NeuroClips/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/train_logs/final_subj01_pretrained_40sess_24bs/last.pth', map_location='cpu')
     model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     del checkpoint
     model.ridge = RidgeRegression(num_voxels_list, out_features=hidden_dim, seq_len=seq_len)
@@ -333,14 +332,14 @@ if use_prior:
     utils.count_params(model.ridge)
     utils.count_params(model)
     
-    checkpoint = torch.load(f'/fs/scratch/PAS2490/neuroclips/models/video_subj0{subj}_SR_backbone.pth', map_location='cpu')
+    checkpoint = torch.load(f'/share/home/zymatrix/NeuroClips/models/video_subj0{subj}_SR_backbone.pth', map_location='cpu')
     model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     del checkpoint
     
 
 else:
     print("\n---resuming from last.pth ckpt---\n")
-    checkpoint = torch.load(f'/fs/scratch/PAS2490/mindeye/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/train_logs/final_subj01_pretrained_40sess_24bs/last.pth', map_location='cpu')
+    checkpoint = torch.load(f'/share/home/zymatrix/NeuroClips/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/train_logs/final_subj01_pretrained_40sess_24bs/last.pth', map_location='cpu')
     model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     del checkpoint
 
@@ -362,7 +361,7 @@ else:
         param.requires_grad_(True)
 
 if use_text:
-    checkpoint = torch.load('/fs/scratch/PAS2490/neuroclips/weights/coco_tokens_avg_proj.pth')
+    checkpoint = torch.load('/share/home/zymatrix/NeuroClips/cc2017/coco_tokens_avg_proj.pth')
     model.clipproj.load_state_dict(checkpoint)
     model.clipproj.requires_grad_(False)
 

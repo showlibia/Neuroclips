@@ -7,8 +7,7 @@
 conda create -n neuroclips python=3.11 -y
 conda activate neuroclips
 
-conda install numpy matplotlib tqdm scikit-image jupyterlab -y
-conda install -c conda-forge accelerate -y
+uv pip install numpy matplotlib tqdm scikit-image jupyterlab
+uv pip install  accelerate
 
-pip install --upgrade pip
-pip install -r requirements.txt
+uv pip install -r requirements.txt

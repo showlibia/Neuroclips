@@ -132,7 +132,7 @@ for attribute_name in vars(args).keys():
 utils.seed_everything(seed)
 model_name =f'video_subj0{subj}_PR'
 
-outdir = os.path.abspath(f'/fs/scratch/PAS2490/neuroclips/models/')
+outdir = os.path.abspath(f'/share/home/zymatrix/NeuroClips/models/')
 if not os.path.exists(outdir) and ckpt_saving:
     os.makedirs(outdir,exist_ok=True)
     
@@ -177,14 +177,14 @@ elif subj == 2 :
 elif subj == 3 :
     voxel_length = 9114
 
-voxel_train = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/subj0{subj}_train_fmri.pt', map_location='cpu')
-voxel_test = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/subj0{subj}_test_fmri.pt', map_location='cpu')
+voxel_train = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/subj0{subj}_train_fmri.pt', map_location='cpu')
+voxel_test = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/subj0{subj}_test_fmri.pt', map_location='cpu')
 ## Average same-video repeats ##
 voxel_test = torch.mean(voxel_test, dim = 1).unsqueeze(1)
 num_voxels_list = [voxel_train.shape[-1]]
 
-train_images = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000//GT_train_3fps.pt',map_location='cpu')
-test_images = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/GT_test_3fps.pt',map_location='cpu')
+train_images = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/GT_train_3fps.pt',map_location='cpu')
+test_images = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/GT_test_3fps.pt',map_location='cpu')
 
 print("Loaded all crucial train frames to cpu!", train_images.shape)
 print("Loaded all crucial test frames to cpu!", test_images.shape)
@@ -208,7 +208,7 @@ if blurry_recon:
         layers_per_block=2,
         sample_size=256,
     )
-    ckpt = torch.load(f'/fs/scratch/PAS2490/neuroclips/weights/datasets--pscotti--neuroclipsv2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/sd_image_var_autoenc.pth')
+    ckpt = torch.load(f'/share/home/zymatrix/NeuroClips/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/sd_image_var_autoenc.pth')
     autoenc.load_state_dict(ckpt)
     
     autoenc.eval()
@@ -218,7 +218,7 @@ if blurry_recon:
     
     from autoencoder.convnext import ConvnextXL
     
-    cnx = ConvnextXL(f'/fs/scratch/PAS2490/neuroclips/weights/datasets--pscotti--neuroclipsv2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/convnext_xlarge_alpha0.75_fullckpt.pth')
+    cnx = ConvnextXL(f'/share/home/zymatrix/NeuroClips/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/convnext_xlarge_alpha0.75_fullckpt.pth')
     cnx.requires_grad_(False)
     cnx.eval()
     cnx.to(device)

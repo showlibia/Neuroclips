@@ -128,9 +128,10 @@ for attribute_name in vars(args).keys():
     
 # seed all random functions
 utils.seed_everything(seed)
-model_name =f'video_subj0{subj}_lPR'
+model_name =f'video_subj0{f download pscotti/mindeyev2 --repo-type=dataset --local-dir
+mindeyev2}_lPR'
 
-outdir = os.path.abspath(f'/fs/scratch/PAS2490/neuroclips/{model_name}')
+outdir = os.path.abspath(f'/share/home/zymatrix/NeuroClips/models/{model_name}')
 if not os.path.exists(outdir) and ckpt_saving:
     os.makedirs(outdir,exist_ok=True)
     
@@ -160,12 +161,12 @@ elif subj == 3 :
     voxel_length = 9114
 
 
-voxel_test = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/subj0{subj}_test_fmri.pt', map_location='cpu')
+voxel_test = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/subj0{subj}_test_fmri.pt', map_location='cpu')
 voxel_test = torch.mean(voxel_test, dim = 1).unsqueeze(1)
 print("Loaded all fmri test frames to cpu!", voxel_test.shape)
 num_voxels_list = [voxel_test.shape[-1]]
 
-test_images = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/GT_test_3fps.pt',map_location='cpu')
+test_images = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/GT_test_3fps.pt',map_location='cpu')
 
 print("Loaded all crucial test frames to cpu!", test_images.shape)
 
@@ -185,7 +186,7 @@ if blurry_recon:
         layers_per_block=2,
         sample_size=256,
     )
-    ckpt = torch.load(f'/fs/scratch/PAS2490/mindeye/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/sd_image_var_autoenc.pth')
+    ckpt = torch.load(f'/share/home/zymatrix/NeuroClips/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/sd_image_var_autoenc.pth')
     autoenc.load_state_dict(ckpt)
     
     autoenc.eval()
@@ -230,7 +231,7 @@ utils.count_params(model)
 
 
 print("\n---resuming from last.pth ckpt---\n")
-checkpoint = torch.load(f'/fs/scratch/PAS2490/neuroclips/models/video_subj0{subj}_PR.pth', map_location='cpu')['model_state_dict']
+checkpoint = torch.load(f'/share/home/zymatrix/NeuroClips/models/video_subj0{subj}_PR.pth', map_location='cpu')['model_state_dict']
 model.load_state_dict(checkpoint, strict=True)
 del checkpoint
 

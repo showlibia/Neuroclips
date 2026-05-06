@@ -1,0 +1,46 @@
+# Model weights and caches
+weights/
+weights/**
+models/
+models/**
+clip/
+blip2/
+
+# HuggingFace/dataset snapshot blobs and train logs
+**/blobs/
+**/snapshots/
+train_logs/
+
+# Project datasets (local copies)
+cc2017/
+mindeyev2/
+
+# Outputs and evaluations
+frames_generated/
+evals/
+
+# Logs and checkpoints
+*.log
+logs/
+*.pth
+*.ckpt
+*.safetensors
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Caches
+.cache/
+cache/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Temp files
+tmp/
+temp/
+
+# OS
+.DS_Store

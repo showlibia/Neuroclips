@@ -78,7 +78,7 @@ os.makedirs("evals",exist_ok=True)
 voxels = {}
 model_name =f'video_subj0{subj}_SR'
 
-os.makedirs(f"/fs/scratch/PAS2490/neuroclips/frames_generated/{model_name}",exist_ok=True)
+os.makedirs(f"/share/home/zymatrix/NeuroClips/frames_generated/{model_name}",exist_ok=True)
 # Load hdf5 data for betas
 
 if subj == 1:
@@ -112,10 +112,10 @@ elif subj == 2 :
 elif subj == 3 :
     voxel_length = 9114
 
-voxel_test = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/subj0{subj}_test_fmri.pt', map_location='cpu')
+voxel_test = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/subj0{subj}_test_fmri.pt', map_location='cpu')
 voxel_test = torch.mean(voxel_test, dim = 1)
 print("Loaded all fmri test frames to cpu!", voxel_test.shape)
-test_images = torch.load(f'/fs/scratch/PAS2490/neuroclips/voxel_mask/datasets--gongzx--cc2017_dataset/snapshots/a82b9e20e98710f18913a10c0a5bf5f19a6e4000/GT_test_3fps.pt',map_location='cpu')
+test_images = torch.load(f'/share/home/zymatrix/NeuroClips/cc2017/GT_test_3fps.pt',map_location='cpu')
 print("Loaded all crucial test frames to cpu!", test_images.shape)
 
 test_dataset = CC2017_Dataset(voxel_test, test_images, istrain = False)
@@ -134,7 +134,7 @@ if blurry_recon:
         layers_per_block=2,
         sample_size=256,
     )
-    ckpt = torch.load(f'/users/PAS2490/marcusshen/.cache/huggingface/hub/datasets--pscotti--mindeyev2/snapshots/183269ab73b49d2fa10b5bfe077194992934e4e6/sd_image_var_autoenc.pth')
+    ckpt = torch.load(f'/share/home/zymatrix/NeuroClips/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/sd_image_var_autoenc.pth')
     autoenc.load_state_dict(ckpt)
     autoenc.eval()
     autoenc.requires_grad_(False)
@@ -218,7 +218,7 @@ utils.count_params(model)
 
 
 print("\n---resuming from last.pth ckpt---\n")
-checkpoint = torch.load(f'/fs/scratch/PAS2490/neuroclips/models/video_subj0{subj}_SR.pth', map_location='cpu')
+checkpoint = torch.load(f'/share/home/zymatrix/NeuroClips/models/video_subj0{subj}_SR.pth', map_location='cpu')
 model.load_state_dict(checkpoint['model_state_dict'], strict=True)
 del checkpoint
 
@@ -244,7 +244,7 @@ class CLIPConverter(torch.nn.Module):
         return x
         
 clip_convert = CLIPConverter()
-state_dict = torch.load(f"/fs/scratch/PAS2490/mindeye/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/bigG_to_L_epoch8.pth", map_location='cpu')['model_state_dict']
+state_dict = torch.load(f"/share/home/zymatrix/NeuroClips/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/bigG_to_L_epoch8.pth", map_location='cpu')['model_state_dict']
 clip_convert.load_state_dict(state_dict, strict=True)
 clip_convert.to(device) # if you get OOM running this script, you can switch this to cpu and lower minibatch_size to 4
 del state_dict
@@ -276,7 +276,7 @@ diffusion_engine = DiffusionEngine(network_config=network_config,
 diffusion_engine.eval().requires_grad_(False)
 diffusion_engine.to(device)
 
-ckpt_path = f'/fs/scratch/PAS2490/mindeye/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/unclip6_epoch0_step110000.ckpt'
+ckpt_path = f'/share/home/zymatrix/NeuroClips/weights/datasets--pscotti--mindeyev2/snapshots/26421f100e4c6012a35ecadb272a0ec1d999202d/unclip6_epoch0_step110000.ckpt'
 ckpt = torch.load(ckpt_path, map_location='cpu')
 diffusion_engine.load_state_dict(ckpt['state_dict'])
 del ckpt
@@ -386,10 +386,10 @@ if blurry_recon:
 print(all_recons.shape)
 # torch.save(all_images,"evals/all_images.pt")
 if blurry_recon:
-    torch.save(all_blurryrecons,f"/fs/scratch/PAS2490/neuroclips/frames_generated/{model_name}/{model_name}_all_blurryrecons.pt")
-torch.save(all_recons,f"/fs/scratch/PAS2490/neuroclips/frames_generated/{model_name}/{model_name}_all_recons.pt")
-torch.save(all_predcaptions,f"/fs/scratch/PAS2490/neuroclips/frames_generated/{model_name}/{model_name}_all_predcaptions.pt")
-torch.save(all_clipvoxels,f"/fs/scratch/PAS2490/neuroclips/frames_generated/{model_name}/{model_name}_all_clipvoxels.pt")
+    torch.save(all_blurryrecons,f"/share/home/zymatrix/NeuroClips/frames_generated/{model_name}/{model_name}_all_blurryrecons.pt")
+torch.save(all_recons,f"/share/home/zymatrix/NeuroClips/frames_generated/{model_name}/{model_name}_all_recons.pt")
+torch.save(all_predcaptions,f"/share/home/zymatrix/NeuroClips/frames_generated/{model_name}/{model_name}_all_predcaptions.pt")
+torch.save(all_clipvoxels,f"/share/home/zymatrix/NeuroClips/frames_generated/{model_name}/{model_name}_all_clipvoxels.pt")
 print(f"saved {model_name} outputs!")
 
 if not utils.is_interactive():
