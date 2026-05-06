@@ -44,3 +44,6 @@ temp/
 
 # OS
 .DS_Store
+
+# Humanize RLCR local state
+.humanize*
