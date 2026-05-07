@@ -72,8 +72,8 @@ parser.add_argument(
     help="Global batch size across all GPUs; for 4x RTX 4090 this defaults to 2 samples/GPU.",
 )
 parser.add_argument(
-    "--test_batch_size", type=int, default=40,
-    help="Evaluation DataLoader batch size on rank 0. Increase on larger-memory GPUs.",
+    "--test_batch_size", type=int, default=300,
+    help="Evaluation batch size on rank 0. Lowering this saves memory but changes retrieval metrics.",
 )
 parser.add_argument(
     "--clip_microbatch_size", type=int, default=4,
@@ -768,9 +768,10 @@ for epoch in progress_bar:
                     print('fwd:',test_fwd_percent_correct, 'bwd:',test_bwd_percent_correct, 'text fwd:', text_fwd_percent_correct)
 
                 utils.check_loss(loss) 
-                loss_all += loss.item()             
+                batch_eval_samples = len(image)
+                loss_all += loss.item() * batch_eval_samples
                 test_losses.append(loss.item())
-                evaluated_samples += len(image)
+                evaluated_samples += batch_eval_samples
 
             # if utils.is_interactive(): clear_output(wait=True)
             print("-------------------------")
@@ -778,8 +779,7 @@ for epoch in progress_bar:
     
     # Save model checkpoint and reconstruct
     if local_rank == 0:
-        num_test_batches = min(len(test_dl), int(np.ceil(eval_max_samples / test_batch_size)) if eval_max_samples else len(test_dl))
-        mean_test_loss = loss_all / max(1, num_test_batches)
+        mean_test_loss = loss_all / max(1, evaluated_samples)
         if mean_test_loss < best_test_loss:
             best_test_loss = mean_test_loss
             print('new best test loss:',best_test_loss)
