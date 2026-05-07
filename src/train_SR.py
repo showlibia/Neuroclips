@@ -14,6 +14,7 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 from accelerate import Accelerator
 from generative_models.sgm.modules.encoders.modules import FrozenOpenCLIPImageEmbedder # bigG embedder from OpenCLIP
 
@@ -78,6 +79,10 @@ parser.add_argument(
 parser.add_argument(
     "--clip_microbatch_size", type=int, default=4,
     help="Number of images per OpenCLIP forward pass. Lower this if ViT-bigG still OOMs on 24GB GPUs.",
+)
+parser.add_argument(
+    "--clip_rank", type=int, default=0,
+    help="Distributed rank that owns the CLIP image encoder. Other ranks receive broadcasted CLIP targets.",
 )
 parser.add_argument(
     "--eval_max_samples", type=int, default=0,
@@ -160,13 +165,19 @@ if batch_size < 1:
     )
 if clip_microbatch_size < 1:
     raise ValueError("--clip_microbatch_size must be >= 1")
+if clip_rank < 0:
+    raise ValueError("--clip_rank must be >= 0")
+if distributed and clip_rank >= world_size:
+    raise ValueError(f"--clip_rank ({clip_rank}) must be smaller than world_size ({world_size})")
+if distributed and clip_rank != 0:
+    raise ValueError("This script currently requires --clip_rank 0 because evaluation/checkpointing run on rank 0.")
 if test_batch_size < 1:
     raise ValueError("--test_batch_size must be >= 1")
 if eval_max_samples < 0:
     raise ValueError("--eval_max_samples must be >= 0")
 print(
     f"global_batch_size = {global_batch_size}, per_device_batch_size = {batch_size}, "
-    f"test_batch_size = {test_batch_size}, clip_microbatch_size = {clip_microbatch_size}, "
+    f"test_batch_size = {test_batch_size}, clip_microbatch_size = {clip_microbatch_size}, clip_rank = {clip_rank}, "
     f"eval_max_samples = {eval_max_samples or 'all'}"
 )
     
@@ -243,21 +254,43 @@ test_dataset = CC2017_Dataset(voxel_test, test_images, test_text, istrain = Fals
 train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, drop_last=False)
 test_dl = torch.utils.data.DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False, num_workers=0, drop_last=False)
 
-clip_img_embedder = FrozenOpenCLIPImageEmbedder(
-    arch="ViT-bigG-14",
-    version="/share/home/zymatrix/NeuroClips/clip/open_clip_pytorch_model.bin",
-    output_tokens=True,
-    only_tokens=True,
-)
-clip_img_embedder.to(device)
-clip_img_embedder.eval()
-clip_img_embedder.requires_grad_(False)
+clip_img_embedder = None
+if not distributed or accelerator.process_index == clip_rank:
+    clip_img_embedder = FrozenOpenCLIPImageEmbedder(
+        arch="ViT-bigG-14",
+        version="/share/home/zymatrix/NeuroClips/clip/open_clip_pytorch_model.bin",
+        output_tokens=True,
+        only_tokens=True,
+    )
+    clip_img_embedder.to(device)
+    clip_img_embedder.eval()
+    clip_img_embedder.requires_grad_(False)
 
 def embed_clip_images(images):
+    if clip_img_embedder is None:
+        raise RuntimeError("CLIP image encoder is not loaded on this rank.")
     clip_chunks = []
     for image_chunk in images.split(clip_microbatch_size):
         clip_chunks.append(clip_img_embedder(image_chunk))
     return torch.cat(clip_chunks, dim=0)
+
+def get_clip_targets(local_images):
+    if not distributed or world_size == 1:
+        return embed_clip_images(local_images)
+
+    gathered_images = accelerator.gather(local_images.contiguous())
+    global_batch = gathered_images.shape[0]
+    global_clip_target = torch.zeros(
+        global_batch, clip_seq_dim, clip_emb_dim,
+        device=device, dtype=data_type,
+    )
+    if accelerator.process_index == clip_rank:
+        global_clip_target = embed_clip_images(gathered_images).to(dtype=data_type)
+    dist.broadcast(global_clip_target, src=clip_rank)
+
+    start = accelerator.process_index * batch_size
+    end = start + batch_size
+    return global_clip_target[start:end]
 
 clip_seq_dim = 256
 clip_emb_dim = 1664
@@ -555,7 +588,7 @@ for epoch in progress_bar:
                 image = img_augment(image)
 
             with torch.no_grad():
-                clip_target = embed_clip_images(image)
+                clip_target = get_clip_targets(image)
             assert not torch.any(torch.isnan(clip_target))
 
             if epoch < int(mixup_pct * num_epochs):
